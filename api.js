@@ -8,12 +8,13 @@ import * as Constants from './constants.js';
  * @returns {{ chat: Array<object>, global: Array<object> }}
  */
 export function fetchQuickReplies() {
-    console.log(`[${Constants.EXTENSION_NAME} Debug] fetchQuickReplies called.`); // DEBUG
+    console.log(`[${Constants.EXTENSION_NAME} Debug] fetchQuickReplies called.`);
     let chatReplies = [];
     const globalReplies = [];
     const chatQrLabels = new Set();
 
-    // --- Standard Quick Reply v2 Fetching (Keep as is, but add logs if needed) ---
+    // --- Standard Quick Reply v2 Fetching ---
+    // (保持不变)
     if (!window.quickReplyApi) {
         console.warn(`[${Constants.EXTENSION_NAME}] Quick Reply API (window.quickReplyApi) not found! Cannot fetch standard replies.`);
     } else {
@@ -57,7 +58,7 @@ export function fetchQuickReplies() {
                         }
                     });
                 }
-                 console.log(`[${Constants.EXTENSION_NAME} Debug] Fetched ${chatReplies.length} standard chat QR, ${globalReplies.length} standard global QR.`); // DEBUG
+                 console.log(`[${Constants.EXTENSION_NAME} Debug] Fetched ${chatReplies.length} standard chat QR, ${globalReplies.length} standard global QR.`);
             } catch (error) {
                 console.error(`[${Constants.EXTENSION_NAME}] Error fetching standard quick replies:`, error);
             }
@@ -66,61 +67,55 @@ export function fetchQuickReplies() {
     // --- End Standard Fetching ---
 
     // --- Enhanced JS Slash Runner Button Scanning ---
-    console.log(`[${Constants.EXTENSION_NAME} Debug] Starting JS Runner button scan...`); // DEBUG
+    console.log(`[${Constants.EXTENSION_NAME} Debug] Starting JS Runner button scan...`);
     try {
-        // **重要**: 确认 JS Runner 按钮容器的 ID 真的是 'TH-script-buttons'
         const jsRunnerButtonContainerId = 'TH-script-buttons';
         const jsRunnerButtonContainer = document.getElementById(jsRunnerButtonContainerId);
 
         if (jsRunnerButtonContainer) {
-            console.log(`[${Constants.EXTENSION_NAME} Debug] Found container #${jsRunnerButtonContainerId}:`, jsRunnerButtonContainer); // DEBUG
+            console.log(`[${Constants.EXTENSION_NAME} Debug] Found container #${jsRunnerButtonContainerId}:`, jsRunnerButtonContainer);
 
-            // **重要**: 确认按钮的选择器是 'button'。如果按钮嵌套在其他元素里，可能需要调整。
-            const jsRunnerButtons = jsRunnerButtonContainer.querySelectorAll('button');
-            console.log(`[${Constants.EXTENSION_NAME} Debug] Found ${jsRunnerButtons.length} button elements inside.`); // DEBUG
+            // ***** 重要修改：使用正确的选择器查找 div *****
+            const jsRunnerButtons = jsRunnerButtonContainer.querySelectorAll('div.qr--button.menu_button.interactable');
+            // ***********************************************
 
-            const scannedLabels = new Set(); // Track labels found in this scan
+            console.log(`[${Constants.EXTENSION_NAME} Debug] Found ${jsRunnerButtons.length} 'div.qr--button' elements inside.`); // 更新日志
+
+            const scannedLabels = new Set();
 
             if (jsRunnerButtons.length > 0) {
-                jsRunnerButtons.forEach((button, index) => {
-                    // **重要**: 检查按钮文本是如何获取的。是直接 textContent 还是在子元素里？
-                    const label = button.textContent?.trim();
-                    console.log(`[${Constants.EXTENSION_NAME} Debug] Scanning button #${index}: Label='${label}', Element:`, button); // DEBUG
+                jsRunnerButtons.forEach((buttonDiv, index) => { // 现在变量是 buttonDiv
+                    const label = buttonDiv.textContent?.trim();
+                    console.log(`[${Constants.EXTENSION_NAME} Debug] Scanning button #${index}: Label='${label}', Element:`, buttonDiv);
 
                     if (label && label !== '' && !scannedLabels.has(label)) {
-                        console.log(`[${Constants.EXTENSION_NAME} Debug] Adding JS Runner button: Label='${label}'`); // DEBUG
+                        console.log(`[${Constants.EXTENSION_NAME} Debug] Adding JS Runner button: Label='${label}'`);
                         chatReplies.push({
-                            setName: 'JS脚本按钮', // Special Set Name
+                            setName: 'JS脚本按钮',
                             label: label,
-                            message: `jsrunner_button_${label}`, // Identifier for click handler
-                            isStandard: false, // Mark as non-standard
+                            message: `jsrunner_button_${label}`,
+                            isStandard: false,
                         });
                         scannedLabels.add(label);
-                        // 可选：检查是否与标准聊天QR冲突
-                        // if (chatQrLabels.has(label)) {
-                        //     console.warn(`[${Constants.EXTENSION_NAME}] JS Runner button label '${label}' conflicts with a standard chat QR.`);
-                        // }
                     } else if (label && scannedLabels.has(label)) {
-                        console.log(`[${Constants.EXTENSION_NAME} Debug] Skipping duplicate JS Runner label: '${label}'`); // DEBUG
+                        console.log(`[${Constants.EXTENSION_NAME} Debug] Skipping duplicate JS Runner label: '${label}'`);
                     } else if (!label || label === '') {
-                         console.log(`[${Constants.EXTENSION_NAME} Debug] Skipping button #${index} due to empty label.`); // DEBUG
+                         console.log(`[${Constants.EXTENSION_NAME} Debug] Skipping button #${index} due to empty label.`);
                     }
                 });
-                console.log(`[${Constants.EXTENSION_NAME} Debug] Finished scanning JS Runner buttons. Added ${scannedLabels.size} unique buttons.`); // DEBUG
+                console.log(`[${Constants.EXTENSION_NAME} Debug] Finished scanning JS Runner buttons. Added ${scannedLabels.size} unique buttons.`);
             } else {
-                console.log(`[${Constants.EXTENSION_NAME} Debug] No <button> elements found inside #${jsRunnerButtonContainerId}.`); // DEBUG
+                console.log(`[${Constants.EXTENSION_NAME} Debug] No 'div.qr--button' elements found inside #${jsRunnerButtonContainerId}.`); // 更新日志
             }
         } else {
-            // **关键调试点**: 如果这里一直输出，说明容器没找到，需要确认ID或加载时机
-            console.log(`[${Constants.EXTENSION_NAME} Debug] JS Runner button container #${jsRunnerButtonContainerId} NOT FOUND in the DOM.`); // DEBUG
+            console.log(`[${Constants.EXTENSION_NAME} Debug] JS Runner button container #${jsRunnerButtonContainerId} NOT FOUND in the DOM.`);
         }
     } catch (error) {
-        console.error(`[${Constants.EXTENSION_NAME}] Error during JS Runner button scanning:`, error); // DEBUG
+        console.error(`[${Constants.EXTENSION_NAME}] Error during JS Runner button scanning:`, error);
     }
     // --- End Scanning ---
 
-    console.log(`[${Constants.EXTENSION_NAME} Debug] Final fetch results - Chat (incl. JS): ${chatReplies.length}, Global: ${globalReplies.length}`); // DEBUG
-    // console.log(`[${Constants.EXTENSION_NAME} Debug] Final chatReplies data:`, JSON.stringify(chatReplies)); // DEBUG (Optional deep inspection)
+    console.log(`[${Constants.EXTENSION_NAME} Debug] Final fetch results - Chat (incl. JS): ${chatReplies.length}, Global: ${globalReplies.length}`);
     return { chat: chatReplies, global: globalReplies };
 }
 
