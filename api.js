@@ -1,20 +1,19 @@
 // api.js
 import * as Constants from './constants.js';
-// 导入 state 可能不再需要，除非 setMenuVisible 在别处调用
-// import { setMenuVisible } from './state.js';
 
 /**
  * Fetches chat and global quick replies from the quickReplyApi,
  * AND scans for JS Slash Runner buttons to add as chat replies.
- * Checks if the main Quick Reply v2 extension is enabled before fetching.
+ * Includes enhanced logging for debugging.
  * @returns {{ chat: Array<object>, global: Array<object> }}
  */
 export function fetchQuickReplies() {
-    let chatReplies = []; // 用 let 替代 const，因为我们会追加扫描到的按钮
+    console.log(`[${Constants.EXTENSION_NAME} Debug] fetchQuickReplies called.`); // DEBUG
+    let chatReplies = [];
     const globalReplies = [];
-    const chatQrLabels = new Set(); // To track labels and avoid duplicates in global
+    const chatQrLabels = new Set();
 
-    // --- 标准 Quick Reply v2 获取逻辑 (保持不变) ---
+    // --- Standard Quick Reply v2 Fetching (Keep as is, but add logs if needed) ---
     if (!window.quickReplyApi) {
         console.warn(`[${Constants.EXTENSION_NAME}] Quick Reply API (window.quickReplyApi) not found! Cannot fetch standard replies.`);
     } else {
@@ -33,20 +32,17 @@ export function fetchQuickReplies() {
                                         setName: setLink.set.name || 'Unknown Set',
                                         label: qr.label,
                                         message: qr.message || '(无消息内容)',
-                                        isStandard: true, // 标记为标准QR
+                                        isStandard: true,
                                     });
                                     chatQrLabels.add(qr.label);
                                 }
                             });
                         }
                     });
-                } else {
-                    console.warn(`[${Constants.EXTENSION_NAME}] Could not find chatConfig.setList in quickReplyApi settings.`);
                 }
-
                 // Fetch Global Quick Replies (Standard)
                 if (qrApi.settings?.config?.setList) {
-                    qrApi.settings.config.setList.forEach(setLink => {
+                     qrApi.settings.config.setList.forEach(setLink => {
                         if (setLink?.isVisible && setLink.set?.qrList) {
                             setLink.set.qrList.forEach(qr => {
                                 if (qr && !qr.isHidden && qr.label && !chatQrLabels.has(qr.label)) {
@@ -54,71 +50,88 @@ export function fetchQuickReplies() {
                                         setName: setLink.set.name || 'Unknown Set',
                                         label: qr.label,
                                         message: qr.message || '(无消息内容)',
-                                        isStandard: true, // 标记为标准QR
+                                        isStandard: true,
                                     });
                                 }
                             });
                         }
                     });
-                } else {
-                    console.warn(`[${Constants.EXTENSION_NAME}] Could not find config.setList in quickReplyApi settings.`);
                 }
+                 console.log(`[${Constants.EXTENSION_NAME} Debug] Fetched ${chatReplies.length} standard chat QR, ${globalReplies.length} standard global QR.`); // DEBUG
             } catch (error) {
                 console.error(`[${Constants.EXTENSION_NAME}] Error fetching standard quick replies:`, error);
             }
         }
     }
-    // --- 标准 Quick Reply v2 获取逻辑结束 ---
+    // --- End Standard Fetching ---
 
-
-    // --- 新增：扫描 JS Slash Runner 按钮 ---
+    // --- Enhanced JS Slash Runner Button Scanning ---
+    console.log(`[${Constants.EXTENSION_NAME} Debug] Starting JS Runner button scan...`); // DEBUG
     try {
-        const jsRunnerButtonContainer = document.getElementById('TH-script-buttons');
-        if (jsRunnerButtonContainer) {
-            const jsRunnerButtons = jsRunnerButtonContainer.querySelectorAll('button'); // 获取容器内所有按钮
-            const scannedLabels = new Set(); // 防止重复添加相同标签的脚本按钮
+        // **重要**: 确认 JS Runner 按钮容器的 ID 真的是 'TH-script-buttons'
+        const jsRunnerButtonContainerId = 'TH-script-buttons';
+        const jsRunnerButtonContainer = document.getElementById(jsRunnerButtonContainerId);
 
-            jsRunnerButtons.forEach(button => {
-                const label = button.textContent?.trim();
-                if (label && !scannedLabels.has(label)) {
-                    // 避免与已有的标准聊天QR重复 (可选，看你是否希望覆盖)
-                    // if (!chatQrLabels.has(label)) {
+        if (jsRunnerButtonContainer) {
+            console.log(`[${Constants.EXTENSION_NAME} Debug] Found container #${jsRunnerButtonContainerId}:`, jsRunnerButtonContainer); // DEBUG
+
+            // **重要**: 确认按钮的选择器是 'button'。如果按钮嵌套在其他元素里，可能需要调整。
+            const jsRunnerButtons = jsRunnerButtonContainer.querySelectorAll('button');
+            console.log(`[${Constants.EXTENSION_NAME} Debug] Found ${jsRunnerButtons.length} button elements inside.`); // DEBUG
+
+            const scannedLabels = new Set(); // Track labels found in this scan
+
+            if (jsRunnerButtons.length > 0) {
+                jsRunnerButtons.forEach((button, index) => {
+                    // **重要**: 检查按钮文本是如何获取的。是直接 textContent 还是在子元素里？
+                    const label = button.textContent?.trim();
+                    console.log(`[${Constants.EXTENSION_NAME} Debug] Scanning button #${index}: Label='${label}', Element:`, button); // DEBUG
+
+                    if (label && label !== '' && !scannedLabels.has(label)) {
+                        console.log(`[${Constants.EXTENSION_NAME} Debug] Adding JS Runner button: Label='${label}'`); // DEBUG
                         chatReplies.push({
-                            setName: 'JS脚本按钮', // 给一个特殊的 Set 名称
+                            setName: 'JS脚本按钮', // Special Set Name
                             label: label,
-                            message: `jsrunner_button_${label}`, // 特殊标记，表示这是JS Runner按钮
-                            isStandard: false, // 标记为非标准 (JS Runner)
+                            message: `jsrunner_button_${label}`, // Identifier for click handler
+                            isStandard: false, // Mark as non-standard
                         });
                         scannedLabels.add(label);
-                    // }
-                }
-            });
-            if (scannedLabels.size > 0) {
-                 console.log(`[${Constants.EXTENSION_NAME}] Found ${scannedLabels.size} JS Runner buttons.`);
+                        // 可选：检查是否与标准聊天QR冲突
+                        // if (chatQrLabels.has(label)) {
+                        //     console.warn(`[${Constants.EXTENSION_NAME}] JS Runner button label '${label}' conflicts with a standard chat QR.`);
+                        // }
+                    } else if (label && scannedLabels.has(label)) {
+                        console.log(`[${Constants.EXTENSION_NAME} Debug] Skipping duplicate JS Runner label: '${label}'`); // DEBUG
+                    } else if (!label || label === '') {
+                         console.log(`[${Constants.EXTENSION_NAME} Debug] Skipping button #${index} due to empty label.`); // DEBUG
+                    }
+                });
+                console.log(`[${Constants.EXTENSION_NAME} Debug] Finished scanning JS Runner buttons. Added ${scannedLabels.size} unique buttons.`); // DEBUG
+            } else {
+                console.log(`[${Constants.EXTENSION_NAME} Debug] No <button> elements found inside #${jsRunnerButtonContainerId}.`); // DEBUG
             }
         } else {
-            // console.log(`[${Constants.EXTENSION_NAME}] JS Runner button container (#TH-script-buttons) not found.`);
+            // **关键调试点**: 如果这里一直输出，说明容器没找到，需要确认ID或加载时机
+            console.log(`[${Constants.EXTENSION_NAME} Debug] JS Runner button container #${jsRunnerButtonContainerId} NOT FOUND in the DOM.`); // DEBUG
         }
     } catch (error) {
-        console.error(`[${Constants.EXTENSION_NAME}] Error scanning for JS Runner buttons:`, error);
+        console.error(`[${Constants.EXTENSION_NAME}] Error during JS Runner button scanning:`, error); // DEBUG
     }
-    // --- 扫描结束 ---
+    // --- End Scanning ---
 
-
-    console.log(`[${Constants.EXTENSION_NAME}] Fetched Replies - Chat (incl. JS Runner): ${chatReplies.length}, Global: ${globalReplies.length}`);
+    console.log(`[${Constants.EXTENSION_NAME} Debug] Final fetch results - Chat (incl. JS): ${chatReplies.length}, Global: ${globalReplies.length}`); // DEBUG
+    // console.log(`[${Constants.EXTENSION_NAME} Debug] Final chatReplies data:`, JSON.stringify(chatReplies)); // DEBUG (Optional deep inspection)
     return { chat: chatReplies, global: globalReplies };
 }
 
 
 /**
  * Triggers a standard quick reply using the API.
- * NOTE: This function is now ONLY for standard Quick Replies.
- * JS Runner buttons are handled separately in handleQuickReplyClick.
+ * (Keep this function as is)
  * @param {string} setName
  * @param {string} label
  */
 export async function triggerQuickReply(setName, label) {
-    // ...(保持原有的 Quick Reply API 调用逻辑不变)...
     if (!window.quickReplyApi) {
         console.error(`[${Constants.EXTENSION_NAME}] Quick Reply API not found! Cannot trigger standard reply.`);
         return;
@@ -127,7 +140,6 @@ export async function triggerQuickReply(setName, label) {
          console.log(`[${Constants.EXTENSION_NAME}] Core Quick Reply v2 is disabled. Cannot trigger standard reply.`);
          return;
     }
-
     console.log(`[${Constants.EXTENSION_NAME}] Triggering Standard Quick Reply: "${setName}.${label}"`);
     try {
         await window.quickReplyApi.executeQuickReply(setName, label);
