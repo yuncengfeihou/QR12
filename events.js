@@ -42,7 +42,6 @@ export async function handleQuickReplyClick(event) {
     const button = event.currentTarget; // The button inside QR助手 menu
     const setName = button.dataset.setName;
     const label = button.dataset.label;
-    // dataset values are strings, explicitly check against 'true'
     const isStandard = button.dataset.isStandard === 'true';
 
     if (!label) {
@@ -56,53 +55,45 @@ export async function handleQuickReplyClick(event) {
         // --- 处理标准 Quick Reply ---
         if (!setName) {
              console.error(`[${Constants.EXTENSION_NAME}] Missing data-set-name for standard QR: ${label}`);
-             // Optionally inform the user
-             // triggerSlash(`/echo severity=error 标准快速回复 '${label}' 缺少 Set 名称。`);
         } else {
-            // 使用 await 等待标准 API 调用完成 (尽管它可能不返回有用的值)
             await triggerQuickReply(setName, label);
         }
     } else {
         // --- 处理 JS Runner 按钮 (模拟点击原始按钮) ---
         console.log(`[${Constants.EXTENSION_NAME}] Handling JS Runner button: "${label}"`);
         try {
-            // 查找原始的 JS Runner 按钮的容器
             const jsRunnerButtonContainer = document.getElementById('TH-script-buttons');
             let originalButton = null;
 
             if (jsRunnerButtonContainer) {
-                // 获取容器内所有按钮
-                const buttons = jsRunnerButtonContainer.querySelectorAll('button');
-                // 遍历查找具有相同文本内容的按钮
-                for (const btn of buttons) {
-                    // 使用 trim() 清除可能的前后空格
-                    if (btn.textContent?.trim() === label) {
-                        originalButton = btn;
-                        break; // 找到第一个匹配的就停止
+                // ***** 重要修改：使用正确的选择器查找 div *****
+                const buttons = jsRunnerButtonContainer.querySelectorAll('div.qr--button.menu_button.interactable');
+                // ***********************************************
+                for (const btnDiv of buttons) { // 现在变量是 btnDiv
+                    if (btnDiv.textContent?.trim() === label) {
+                        originalButton = btnDiv;
+                        break;
                     }
                 }
             }
 
             if (originalButton) {
-                console.log(`[${Constants.EXTENSION_NAME}] Found original JS Runner button for "${label}". Simulating click...`);
-                originalButton.click(); // 模拟点击原始按钮
+                console.log(`[${Constants.EXTENSION_NAME}] Found original JS Runner button (div) for "${label}". Simulating click...`);
+                originalButton.click(); // 模拟点击原始的 div
                 console.log(`[${Constants.EXTENSION_NAME}] Click simulated for "${label}".`);
             } else {
-                console.error(`[${Constants.EXTENSION_NAME}] Could not find the original JS Runner button with label "${label}" in #TH-script-buttons.`);
-                // 可以选择给用户一个提示
-                // SillyTavern.Utility.triggerSlash(`/echo severity=error 未能在页面上找到对应的 '${label}' 脚本按钮。`);
+                console.error(`[${Constants.EXTENSION_NAME}] Could not find the original JS Runner button (div) with label "${label}" in #TH-script-buttons.`);
             }
         } catch (error) {
             console.error(`[${Constants.EXTENSION_NAME}] Error simulating click for JS Runner button "${label}":`, error);
         }
     }
 
-    // 无论成功与否，都关闭菜单
-    // 添加一个小延迟确保点击事件处理完毕再关闭，避免潜在的竞争问题
+    // 关闭菜单
     setTimeout(() => {
         setMenuVisible(false);
         updateMenuVisibilityUI();
-    }, 50); // 50毫秒延迟
+    }, 50);
 }
 
 
