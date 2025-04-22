@@ -6,7 +6,7 @@ import { updateMenuVisibilityUI } from './ui.js';
 import { triggerQuickReply } from './api.js';
 import { handleSettingsChange, handleUsageButtonClick, closeUsagePanel } from './settings.js';
 // 导入 extension_settings 以便在样式函数中使用
-import { extension_settings } from './index.js'; // 假设 index.js 导出了它
+import { extension_settings } from './index.js'; 
 
 /**
  * Handles clicks on the rocket button. Toggles menu visibility state and updates UI.
