@@ -75,9 +75,8 @@ export function fetchQuickReplies() {
         if (jsRunnerButtonContainer) {
             console.log(`[${Constants.EXTENSION_NAME} Debug] Found container #${jsRunnerButtonContainerId}:`, jsRunnerButtonContainer);
 
-            // ***** 重要修改：使用正确的选择器查找 div *****
+            // --- 重要修改：使用正确的选择器查找 div ---
             const jsRunnerButtons = jsRunnerButtonContainer.querySelectorAll('div.qr--button.menu_button.interactable');
-            // ***********************************************
 
             console.log(`[${Constants.EXTENSION_NAME} Debug] Found ${jsRunnerButtons.length} 'div.qr--button' elements inside.`); // 更新日志
 
