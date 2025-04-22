@@ -1,0 +1,11 @@
+{
+    "display_name": "QRM1.3",
+    "loading_order": 13,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "uhhhh15",
+    "version": "1.2.0",
+    "homePage": ""
+}
