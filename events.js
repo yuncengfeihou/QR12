@@ -2,20 +2,22 @@
 import * as Constants from './constants.js';
 import { sharedState, setMenuVisible } from './state.js';
 import { updateMenuVisibilityUI } from './ui.js';
+// 确保导入 triggerQuickReply (现在只用于标准QR)
 import { triggerQuickReply } from './api.js';
 import { handleSettingsChange, handleUsageButtonClick, closeUsagePanel } from './settings.js';
-import { extension_settings } from './index.js';
+// 导入 extension_settings 以便在样式函数中使用
+import { extension_settings } from './index.js'; // 假设 index.js 导出了它
 
 /**
  * Handles clicks on the rocket button. Toggles menu visibility state and updates UI.
  */
 export function handleRocketButtonClick() {
     setMenuVisible(!sharedState.menuVisible); // Toggle state
-    updateMenuVisibilityUI(); // Update UI based on new state
+    updateMenuVisibilityUI(); // Update UI based on new state (this will fetch and render replies)
 }
 
 /**
- * Handles clicks outside the menu to close it.
+ * Handles clicks outside the menu and the rocket button to close the menu.
  * @param {Event} event
  */
 export function handleOutsideClick(event) {
@@ -32,28 +34,77 @@ export function handleOutsideClick(event) {
 }
 
 /**
- * Handles clicks on individual quick reply items (buttons).
- * Reads data attributes and triggers the API call.
- * @param {Event} event The click event on the button.
+ * Handles clicks on individual quick reply items (buttons) in the QR助手 menu.
+ * Determines if it's a standard QR or a JS Runner button and acts accordingly.
+ * @param {Event} event The click event object, where event.currentTarget is the button clicked inside the menu.
  */
 export async function handleQuickReplyClick(event) {
-    const button = event.currentTarget; // Get the button that was clicked
+    const button = event.currentTarget; // The button inside QR助手 menu
     const setName = button.dataset.setName;
     const label = button.dataset.label;
+    // dataset values are strings, explicitly check against 'true'
+    const isStandard = button.dataset.isStandard === 'true';
 
-    if (!setName || !label) {
-        console.error(`[${Constants.EXTENSION_NAME}] Missing data-set-name or data-label on clicked item.`);
-        setMenuVisible(false); // Close menu on error
+    if (!label) {
+        console.error(`[${Constants.EXTENSION_NAME}] Missing data-label on clicked item.`);
+        setMenuVisible(false);
         updateMenuVisibilityUI();
         return;
     }
 
-    await triggerQuickReply(setName, label); // Await the API call
+    if (isStandard) {
+        // --- 处理标准 Quick Reply ---
+        if (!setName) {
+             console.error(`[${Constants.EXTENSION_NAME}] Missing data-set-name for standard QR: ${label}`);
+             // Optionally inform the user
+             // triggerSlash(`/echo severity=error 标准快速回复 '${label}' 缺少 Set 名称。`);
+        } else {
+            // 使用 await 等待标准 API 调用完成 (尽管它可能不返回有用的值)
+            await triggerQuickReply(setName, label);
+        }
+    } else {
+        // --- 处理 JS Runner 按钮 (模拟点击原始按钮) ---
+        console.log(`[${Constants.EXTENSION_NAME}] Handling JS Runner button: "${label}"`);
+        try {
+            // 查找原始的 JS Runner 按钮的容器
+            const jsRunnerButtonContainer = document.getElementById('TH-script-buttons');
+            let originalButton = null;
 
-    // Always close the menu after attempting to trigger, regardless of success/failure
-    setMenuVisible(false);
-    updateMenuVisibilityUI();
+            if (jsRunnerButtonContainer) {
+                // 获取容器内所有按钮
+                const buttons = jsRunnerButtonContainer.querySelectorAll('button');
+                // 遍历查找具有相同文本内容的按钮
+                for (const btn of buttons) {
+                    // 使用 trim() 清除可能的前后空格
+                    if (btn.textContent?.trim() === label) {
+                        originalButton = btn;
+                        break; // 找到第一个匹配的就停止
+                    }
+                }
+            }
+
+            if (originalButton) {
+                console.log(`[${Constants.EXTENSION_NAME}] Found original JS Runner button for "${label}". Simulating click...`);
+                originalButton.click(); // 模拟点击原始按钮
+                console.log(`[${Constants.EXTENSION_NAME}] Click simulated for "${label}".`);
+            } else {
+                console.error(`[${Constants.EXTENSION_NAME}] Could not find the original JS Runner button with label "${label}" in #TH-script-buttons.`);
+                // 可以选择给用户一个提示
+                // SillyTavern.Utility.triggerSlash(`/echo severity=error 未能在页面上找到对应的 '${label}' 脚本按钮。`);
+            }
+        } catch (error) {
+            console.error(`[${Constants.EXTENSION_NAME}] Error simulating click for JS Runner button "${label}":`, error);
+        }
+    }
+
+    // 无论成功与否，都关闭菜单
+    // 添加一个小延迟确保点击事件处理完毕再关闭，避免潜在的竞争问题
+    setTimeout(() => {
+        setMenuVisible(false);
+        updateMenuVisibilityUI();
+    }, 50); // 50毫秒延迟
 }
+
 
 /**
  * 处理菜单样式按钮点击
@@ -61,7 +112,6 @@ export async function handleQuickReplyClick(event) {
 export function handleMenuStyleButtonClick() {
     const stylePanel = document.getElementById(Constants.ID_MENU_STYLE_PANEL);
     if (stylePanel) {
-        // 载入当前样式到面板
         loadMenuStylesIntoPanel();
         stylePanel.style.display = 'block';
     }
@@ -72,45 +122,47 @@ export function handleMenuStyleButtonClick() {
  */
 function loadMenuStylesIntoPanel() {
     const settings = extension_settings[Constants.EXTENSION_NAME];
-    // 确保menuStyles存在，否则使用默认值
     const styles = settings.menuStyles || JSON.parse(JSON.stringify(Constants.DEFAULT_MENU_STYLES));
-    
-    // 设置各个控件的值时添加检查
-    const itemBgColorHex = styles.itemBgColor && typeof styles.itemBgColor === 'string' ? rgbaToHex(styles.itemBgColor) : '#3c3c3c';
-    document.getElementById('qr-item-bgcolor-picker').value = itemBgColorHex;
-    document.getElementById('qr-item-bgcolor-text').value = itemBgColorHex.toUpperCase();
-    
-    document.getElementById('qr-item-opacity').value = 
-        styles.itemBgColor && typeof styles.itemBgColor === 'string' ? getOpacityFromRgba(styles.itemBgColor) : 0.7;
-    document.getElementById('qr-item-opacity-value').textContent = 
-        styles.itemBgColor && typeof styles.itemBgColor === 'string' ? getOpacityFromRgba(styles.itemBgColor) : 0.7;
-    
-    const itemTextColor = styles.itemTextColor || '#ffffff';
+
+    // Helper to safely get style values or defaults
+    const getStyleValue = (key, defaultValue) => styles[key] !== undefined ? styles[key] : defaultValue;
+
+    // Item Background Color and Opacity
+    const itemBgRgba = getStyleValue('itemBgColor', Constants.DEFAULT_MENU_STYLES.itemBgColor);
+    document.getElementById('qr-item-bgcolor-picker').value = rgbaToHex(itemBgRgba);
+    document.getElementById('qr-item-bgcolor-text').value = rgbaToHex(itemBgRgba).toUpperCase();
+    document.getElementById('qr-item-opacity').value = getOpacityFromRgba(itemBgRgba);
+    document.getElementById('qr-item-opacity-value').textContent = getOpacityFromRgba(itemBgRgba);
+
+    // Item Text Color
+    const itemTextColor = getStyleValue('itemTextColor', Constants.DEFAULT_MENU_STYLES.itemTextColor);
     document.getElementById('qr-item-color-picker').value = itemTextColor;
     document.getElementById('qr-item-color-text').value = itemTextColor.toUpperCase();
-    
-    const titleColor = styles.titleColor || '#cccccc';
+
+    // Title Text Color
+    const titleColor = getStyleValue('titleColor', Constants.DEFAULT_MENU_STYLES.titleColor);
     document.getElementById('qr-title-color-picker').value = titleColor;
     document.getElementById('qr-title-color-text').value = titleColor.toUpperCase();
-    
-    const titleBorderColor = styles.titleBorderColor || '#444444';
+
+    // Title Border Color
+    const titleBorderColor = getStyleValue('titleBorderColor', Constants.DEFAULT_MENU_STYLES.titleBorderColor);
     document.getElementById('qr-title-border-picker').value = titleBorderColor;
     document.getElementById('qr-title-border-text').value = titleBorderColor.toUpperCase();
-    
-    const emptyColor = styles.emptyTextColor || '#666666';
+
+    // Empty Text Color
+    const emptyColor = getStyleValue('emptyTextColor', Constants.DEFAULT_MENU_STYLES.emptyTextColor);
     document.getElementById('qr-empty-color-picker').value = emptyColor;
     document.getElementById('qr-empty-color-text').value = emptyColor.toUpperCase();
-    
-    const menuBgColorHex = styles.menuBgColor && typeof styles.menuBgColor === 'string' ? rgbaToHex(styles.menuBgColor) : '#000000';
-    document.getElementById('qr-menu-bgcolor-picker').value = menuBgColorHex;
-    document.getElementById('qr-menu-bgcolor-text').value = menuBgColorHex.toUpperCase();
-    
-    document.getElementById('qr-menu-opacity').value = 
-        styles.menuBgColor && typeof styles.menuBgColor === 'string' ? getOpacityFromRgba(styles.menuBgColor) : 0.85;
-    document.getElementById('qr-menu-opacity-value').textContent = 
-        styles.menuBgColor && typeof styles.menuBgColor === 'string' ? getOpacityFromRgba(styles.menuBgColor) : 0.85;
-    
-    const menuBorderColor = styles.menuBorderColor || '#555555';
+
+    // Menu Background Color and Opacity
+    const menuBgRgba = getStyleValue('menuBgColor', Constants.DEFAULT_MENU_STYLES.menuBgColor);
+    document.getElementById('qr-menu-bgcolor-picker').value = rgbaToHex(menuBgRgba);
+    document.getElementById('qr-menu-bgcolor-text').value = rgbaToHex(menuBgRgba).toUpperCase();
+    document.getElementById('qr-menu-opacity').value = getOpacityFromRgba(menuBgRgba);
+    document.getElementById('qr-menu-opacity-value').textContent = getOpacityFromRgba(menuBgRgba);
+
+    // Menu Border Color
+    const menuBorderColor = getStyleValue('menuBorderColor', Constants.DEFAULT_MENU_STYLES.menuBorderColor);
     document.getElementById('qr-menu-border-picker').value = menuBorderColor;
     document.getElementById('qr-menu-border-text').value = menuBorderColor.toUpperCase();
 }
@@ -133,49 +185,48 @@ export function applyMenuStyles() {
     if (!settings.menuStyles) {
         settings.menuStyles = JSON.parse(JSON.stringify(Constants.DEFAULT_MENU_STYLES));
     }
-    
-    // 从颜色选择器或文本输入框获取值
-    function getColorValue(pickerId) {
+
+    // 从颜色选择器或文本输入框获取值 (优先文本框，如果合法)
+    function getColorValue(pickerId, defaultHex) {
         const textInput = document.getElementById(pickerId + '-text');
         if (textInput && /^#[0-9A-F]{6}$/i.test(textInput.value)) {
             return textInput.value;
         }
         const picker = document.getElementById(pickerId);
-        return picker ? picker.value : null;
+        return picker ? picker.value : defaultHex;
     }
-    
+
     // 获取各项颜色值
-    const itemBgColor = getColorValue('qr-item-bgcolor-picker');
+    const itemBgHex = getColorValue('qr-item-bgcolor-picker', '#3c3c3c');
     const itemOpacity = document.getElementById('qr-item-opacity').value;
-    settings.menuStyles.itemBgColor = hexToRgba(itemBgColor, itemOpacity);
-    
-    settings.menuStyles.itemTextColor = getColorValue('qr-item-color-picker');
-    settings.menuStyles.titleColor = getColorValue('qr-title-color-picker');
-    settings.menuStyles.titleBorderColor = getColorValue('qr-title-border-picker');
-    settings.menuStyles.emptyTextColor = getColorValue('qr-empty-color-picker');
-    
-    const menuBgColor = getColorValue('qr-menu-bgcolor-picker');
+    settings.menuStyles.itemBgColor = hexToRgba(itemBgHex, itemOpacity);
+
+    settings.menuStyles.itemTextColor = getColorValue('qr-item-color-picker', '#ffffff');
+    settings.menuStyles.titleColor = getColorValue('qr-title-color-picker', '#cccccc');
+    settings.menuStyles.titleBorderColor = getColorValue('qr-title-border-picker', '#444444');
+    settings.menuStyles.emptyTextColor = getColorValue('qr-empty-color-picker', '#666666');
+
+    const menuBgHex = getColorValue('qr-menu-bgcolor-picker', '#000000');
     const menuOpacity = document.getElementById('qr-menu-opacity').value;
-    settings.menuStyles.menuBgColor = hexToRgba(menuBgColor, menuOpacity);
-    
-    settings.menuStyles.menuBorderColor = getColorValue('qr-menu-border-picker');
-    
-    // 删除followTheme属性（如果存在）
-    if (settings.menuStyles.hasOwnProperty('followTheme')) {
-        delete settings.menuStyles.followTheme;
-    }
-    
+    settings.menuStyles.menuBgColor = hexToRgba(menuBgHex, menuOpacity);
+
+    settings.menuStyles.menuBorderColor = getColorValue('qr-menu-border-picker', '#555555');
+
     // 应用样式到菜单
     updateMenuStylesUI();
-    
+
     // 关闭面板
     closeMenuStylePanel();
-    
-    // 保存设置到localStorage
-    try {
-        localStorage.setItem('QRA_settings', JSON.stringify(settings));
-    } catch(e) {
-        console.error('保存到localStorage失败:', e);
+
+    // 触Settings保存 (如果可用)
+    if (typeof window.quickReplyMenu !== 'undefined' && window.quickReplyMenu.saveSettings) {
+        window.quickReplyMenu.saveSettings();
+    } else {
+         console.warn(`[${Constants.EXTENSION_NAME}] Cannot automatically save style settings.`);
+         // 可以在这里尝试localStorage备份
+         try {
+             localStorage.setItem('QRA_settings', JSON.stringify(extension_settings[Constants.EXTENSION_NAME]));
+         } catch(e) { console.error('Failed to save styles to localStorage:', e); }
     }
 }
 
@@ -185,45 +236,53 @@ export function applyMenuStyles() {
 export function resetMenuStyles() {
     const settings = extension_settings[Constants.EXTENSION_NAME];
     settings.menuStyles = JSON.parse(JSON.stringify(Constants.DEFAULT_MENU_STYLES));
-    
-    // 重新加载面板
+
+    // 重新加载面板以显示默认值
     loadMenuStylesIntoPanel();
-    
-    // 应用默认样式
+
+    // 应用默认样式到UI
     updateMenuStylesUI();
+
+    // 触Settings保存 (如果可用)
+    if (typeof window.quickReplyMenu !== 'undefined' && window.quickReplyMenu.saveSettings) {
+        window.quickReplyMenu.saveSettings();
+    }
 }
 
 /**
- * 更新菜单的实际样式
+ * 更新菜单的实际样式 (通过CSS变量)
  */
 export function updateMenuStylesUI() {
     const settings = extension_settings[Constants.EXTENSION_NAME];
+    // 使用 || 提供默认值，以防 menuStyles 尚未初始化
     const styles = settings.menuStyles || Constants.DEFAULT_MENU_STYLES;
-    
-    const menu = document.getElementById(Constants.ID_MENU);
-    if (!menu) return;
-    
-    // 确保菜单有正确的类
-    if (!menu.classList.contains('custom-styled-menu')) {
-        menu.className = Constants.ID_MENU + ' custom-styled-menu';
-    }
-    
-    // 应用自定义样式
-    document.documentElement.style.setProperty('--qr-item-bg-color', styles.itemBgColor || 'rgba(60, 60, 60, 0.7)');
-    document.documentElement.style.setProperty('--qr-item-text-color', styles.itemTextColor || 'white');
-    document.documentElement.style.setProperty('--qr-title-color', styles.titleColor || '#ccc');
-    document.documentElement.style.setProperty('--qr-title-border-color', styles.titleBorderColor || '#444');
-    document.documentElement.style.setProperty('--qr-empty-text-color', styles.emptyTextColor || '#666');
-    document.documentElement.style.setProperty('--qr-menu-bg-color', styles.menuBgColor || 'rgba(0, 0, 0, 0.85)');
-    document.documentElement.style.setProperty('--qr-menu-border-color', styles.menuBorderColor || '#555');
+    const root = document.documentElement;
+
+    // Helper to safely set CSS property
+    const setCssVar = (varName, value, defaultValue) => {
+        root.style.setProperty(varName, value !== undefined ? value : defaultValue);
+    };
+
+    setCssVar('--qr-item-bg-color', styles.itemBgColor, Constants.DEFAULT_MENU_STYLES.itemBgColor);
+    setCssVar('--qr-item-text-color', styles.itemTextColor, Constants.DEFAULT_MENU_STYLES.itemTextColor);
+    setCssVar('--qr-title-color', styles.titleColor, Constants.DEFAULT_MENU_STYLES.titleColor);
+    setCssVar('--qr-title-border-color', styles.titleBorderColor, Constants.DEFAULT_MENU_STYLES.titleBorderColor);
+    setCssVar('--qr-empty-text-color', styles.emptyTextColor, Constants.DEFAULT_MENU_STYLES.emptyTextColor);
+    setCssVar('--qr-menu-bg-color', styles.menuBgColor, Constants.DEFAULT_MENU_STYLES.menuBgColor);
+    setCssVar('--qr-menu-border-color', styles.menuBorderColor, Constants.DEFAULT_MENU_STYLES.menuBorderColor);
 }
 
 /**
  * 辅助函数 - hex转rgba
  */
 function hexToRgba(hex, opacity) {
-    if (!hex) return `rgba(60, 60, 60, ${opacity || 0.7})`;
-    
+    // 改进：处理无效输入
+    if (!hex || !/^#[0-9A-F]{6}$/i.test(hex)) {
+        hex = '#3c3c3c'; // Default to gray if hex is invalid
+        console.warn(`Invalid hex color: ${hex}. Using default.`);
+    }
+    opacity = (opacity !== undefined && !isNaN(parseFloat(opacity))) ? parseFloat(opacity) : 0.7; // Default opacity
+
     hex = hex.replace('#', '');
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
@@ -232,25 +291,22 @@ function hexToRgba(hex, opacity) {
 }
 
 /**
- * 辅助函数 - rgba转hex
+ * 辅助函数 - rgba转hex (忽略透明度)
  */
 function rgbaToHex(rgba) {
-    // 添加防御性检查
     if (!rgba || typeof rgba !== 'string') {
-        return '#000000'; // 返回默认黑色
+        return '#000000'; // Default black
     }
-    
     const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)/);
     if (!match) {
-        // 如果不是rgba格式，直接返回原值(如果是hex格式)或默认值
-        return rgba.startsWith('#') ? rgba : '#000000';
+        return rgba.startsWith('#') ? rgba.substring(0, 7) : '#000000'; // Return if already hex or default black
     }
-    
     const r = parseInt(match[1]);
     const g = parseInt(match[2]);
     const b = parseInt(match[3]);
-    
-    return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
+    // Ensure values are within 0-255
+    const toHex = (c) => ('0' + Math.max(0, Math.min(255, c)).toString(16)).slice(-2);
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 /**
@@ -258,12 +314,14 @@ function rgbaToHex(rgba) {
  */
 function getOpacityFromRgba(rgba) {
     if (!rgba || typeof rgba !== 'string') {
-        return 1; // 默认不透明
+        return 1; // Default opaque
     }
-    
     const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)/);
-    if (!match) return 1;
-    return parseFloat(match[4] || 1);
+    if (!match || match[4] === undefined) { // Check if opacity value exists
+        return 1; // Default opaque if alpha channel is missing
+    }
+    const opacity = parseFloat(match[4]);
+    return isNaN(opacity) ? 1 : Math.max(0, Math.min(1, opacity)); // Clamp between 0 and 1
 }
 
 /**
@@ -271,123 +329,167 @@ function getOpacityFromRgba(rgba) {
  */
 function setupColorPickerSync() {
     document.querySelectorAll('.qr-color-picker').forEach(picker => {
-        const textId = picker.id + '-text';
+        const textId = picker.id.replace('-picker', '-text'); // More robust ID derivation
         const textInput = document.getElementById(textId);
         if (!textInput) return;
-        
-        // 初始化文本输入框的值
+
+        // Initialize text input from picker
         textInput.value = picker.value.toUpperCase();
-        
-        // 当颜色选择器改变时更新文本输入框
+
+        // Picker changes -> Update text input
         picker.addEventListener('input', () => {
             textInput.value = picker.value.toUpperCase();
         });
-        
-        // 当文本输入框改变时更新颜色选择器
+
+        // Text input changes -> Update picker (if valid hex)
         textInput.addEventListener('input', () => {
-            const value = textInput.value;
-            // 支持有或没有#前缀的六位十六进制颜色
-            if (/^#?([0-9A-F]{6})$/i.test(value)) {
-                const color = value.startsWith('#') ? value : '#' + value;
-                picker.value = color;
-                textInput.value = color.toUpperCase();
+            let value = textInput.value.trim().toUpperCase();
+            if (!value.startsWith('#')) {
+                value = '#' + value;
             }
+            if (/^#[0-9A-F]{6}$/i.test(value)) {
+                picker.value = value;
+                textInput.value = value; // Ensure consistent casing/format
+            }
+        });
+        // Also validate on blur/change for better UX
+        textInput.addEventListener('change', () => {
+             let value = textInput.value.trim().toUpperCase();
+            if (!value.startsWith('#')) {
+                value = '#' + value;
+            }
+             if (/^#[0-9A-F]{6}$/i.test(value)) {
+                 picker.value = value;
+                 textInput.value = value;
+             } else {
+                 // Revert to picker's current value if text input is invalid
+                 textInput.value = picker.value.toUpperCase();
+             }
         });
     });
 }
 
 /**
+ * 处理文件上传并更新设置
+ * @param {Event} event
+ */
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Optional: Check file size or type here if needed
+    // const maxSize = 500 * 1024; // 500 KB limit example
+    // if (file.size > maxSize) { alert('文件过大!'); return; }
+    // if (!['image/png', 'image/jpeg', 'image/svg+xml', 'image/gif'].includes(file.type)) { alert('不支持的文件类型!'); return; }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const customIconUrlInput = document.getElementById(Constants.ID_CUSTOM_ICON_URL);
+        if (customIconUrlInput) {
+            const base64Result = e.target.result;
+            customIconUrlInput.value = base64Result; // Display base64 string
+
+            // Manually trigger an 'input' event so handleSettingsChange picks it up
+            const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+            customIconUrlInput.dispatchEvent(inputEvent);
+        }
+    };
+    reader.onerror = function(e) {
+        console.error(`[${Constants.EXTENSION_NAME}] Error reading file:`, e);
+        alert('读取文件时出错。');
+    };
+    reader.readAsDataURL(file); // Read file as Base64
+}
+
+
+/**
  * Sets up all event listeners for the plugin.
  */
 export function setupEventListeners() {
-    const { 
-        rocketButton, 
+    const {
+        rocketButton,
         settingsDropdown,
         iconTypeDropdown,
         customIconUrl,
-        colorMatchCheckbox
+        colorMatchCheckbox,
+        menu // Get the menu element reference
     } = sharedState.domElements;
 
+    // --- Core Menu Interaction ---
     rocketButton?.addEventListener('click', handleRocketButtonClick);
     document.addEventListener('click', handleOutsideClick);
 
-    // Settings listeners
+    // --- Quick Reply Item Clicks (Event Delegation on Menu) ---
+    if (menu) {
+        menu.addEventListener('click', (event) => {
+            // Find the closest ancestor button with the correct class
+            const targetButton = event.target.closest(`.${Constants.CLASS_ITEM}`);
+            // Ensure it's the button itself and has the necessary dataset type
+            if (targetButton && targetButton.matches(`.${Constants.CLASS_ITEM}`) && targetButton.dataset.type === 'quick-reply-item') {
+                // Call the unified handler, passing the button as currentTarget
+                handleQuickReplyClick({ currentTarget: targetButton });
+            }
+        });
+    } else {
+        console.error(`[${Constants.EXTENSION_NAME}] Menu element not found for setting up click delegation.`);
+    }
+
+
+    // --- Settings Panel Listeners ---
     settingsDropdown?.addEventListener('change', handleSettingsChange);
-    
-    // 新增图标设置相关监听器
-    iconTypeDropdown?.addEventListener('change', (event) => {
-        handleSettingsChange(event);
-        
-        // 处理自定义图标容器显示逻辑
-        const customIconContainer = document.querySelector('.custom-icon-container');
-        if (customIconContainer) {
-            customIconContainer.style.display = 
-                event.target.value === Constants.ICON_TYPES.CUSTOM ? 'flex' : 'none';
-        }
-    });
-    
-    customIconUrl?.addEventListener('input', handleSettingsChange);
+    iconTypeDropdown?.addEventListener('change', handleSettingsChange); // handleSettingsChange now handles icon preview updates indirectly
+    customIconUrl?.addEventListener('input', handleSettingsChange); // Use 'input' for immediate feedback
     colorMatchCheckbox?.addEventListener('change', handleSettingsChange);
-    
-    // 添加使用说明按钮监听器
+
+    // --- Usage Panel ---
     const usageButton = document.getElementById(Constants.ID_USAGE_BUTTON);
-    if (usageButton) {
-        usageButton.addEventListener('click', handleUsageButtonClick);
-    }
-    
-    // 添加使用说明面板关闭按钮监听器
-    const usageCloseButton = document.getElementById(`${Constants.ID_USAGE_PANEL}-close`);
-    if (usageCloseButton) {
-        usageCloseButton.addEventListener('click', closeUsagePanel);
-    }
-    
-    // 添加菜单样式按钮监听器
+    usageButton?.addEventListener('click', handleUsageButtonClick);
+    // The usage panel close button listener is now added dynamically when the panel is created in settings.js
+
+    // --- Menu Style Panel ---
     const menuStyleButton = document.getElementById(Constants.ID_MENU_STYLE_BUTTON);
     menuStyleButton?.addEventListener('click', handleMenuStyleButtonClick);
-    
-    // 添加菜单样式面板相关监听器
-    const closeButton = document.getElementById(`${Constants.ID_MENU_STYLE_PANEL}-close`);
-    closeButton?.addEventListener('click', closeMenuStylePanel);
-    
-    const applyButton = document.getElementById(`${Constants.ID_MENU_STYLE_PANEL}-apply`);
-    applyButton?.addEventListener('click', applyMenuStyles);
-    
-    const resetButton = document.getElementById(Constants.ID_RESET_STYLE_BUTTON);
-    resetButton?.addEventListener('click', resetMenuStyles);
-    
-    // 添加不透明度滑块变化监听器
-    const itemOpacitySlider = document.getElementById('qr-item-opacity');
-    itemOpacitySlider?.addEventListener('input', function() {
-        document.getElementById('qr-item-opacity-value').textContent = this.value;
-    });
-    
-    const menuOpacitySlider = document.getElementById('qr-menu-opacity');
-    menuOpacitySlider?.addEventListener('input', function() {
-        document.getElementById('qr-menu-opacity-value').textContent = this.value;
-    });
 
-    // 设置颜色选择器与文本输入框同步
-    setupColorPickerSync();
-    
-    // 处理文件上传
-    const fileUpload = document.getElementById('icon-file-upload');
-    if (fileUpload) {
-        fileUpload.addEventListener('change', function(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const customIconUrl = document.getElementById(Constants.ID_CUSTOM_ICON_URL);
-                if (customIconUrl) {
-                    customIconUrl.value = e.target.result; // 将文件转为base64
-                    
-                    // 创建一个合成的change事件
-                    const inputEvent = new Event('input', { bubbles: true });
-                    customIconUrl.dispatchEvent(inputEvent);
-                }
-            };
-            reader.readAsDataURL(file);
+    const stylePanel = document.getElementById(Constants.ID_MENU_STYLE_PANEL);
+    if (stylePanel) {
+        const closeButton = stylePanel.querySelector(`#${Constants.ID_MENU_STYLE_PANEL}-close`);
+        closeButton?.addEventListener('click', closeMenuStylePanel);
+
+        const applyButton = stylePanel.querySelector(`#${Constants.ID_MENU_STYLE_PANEL}-apply`);
+        applyButton?.addEventListener('click', applyMenuStyles);
+
+        const resetButton = stylePanel.querySelector(`#${Constants.ID_RESET_STYLE_BUTTON}`); // Directly get reset button by ID
+        resetButton?.addEventListener('click', resetMenuStyles);
+
+        // Opacity Sliders
+        const itemOpacitySlider = stylePanel.querySelector('#qr-item-opacity');
+        itemOpacitySlider?.addEventListener('input', function() {
+            const valueDisplay = stylePanel.querySelector('#qr-item-opacity-value');
+            if(valueDisplay) valueDisplay.textContent = this.value;
         });
+
+        const menuOpacitySlider = stylePanel.querySelector('#qr-menu-opacity');
+        menuOpacitySlider?.addEventListener('input', function() {
+             const valueDisplay = stylePanel.querySelector('#qr-menu-opacity-value');
+             if(valueDisplay) valueDisplay.textContent = this.value;
+        });
+
+        // Set up color picker synchronization within the style panel
+        setupColorPickerSync();
+    } else {
+         console.warn(`[${Constants.EXTENSION_NAME}] Menu style panel not found for setting up listeners.`);
     }
+
+
+    // --- Custom Icon File Upload ---
+    const fileUploadInput = document.getElementById('icon-file-upload'); // Get the hidden file input
+    if (fileUploadInput) {
+        fileUploadInput.addEventListener('change', handleFileUpload);
+    }
+    // The "选择文件" button's click is handled by inline HTML onclick to trigger the hidden input.
+
+    // --- Save Settings Button ---
+    // The save button listener is now added dynamically in settings.js or triggered via window.quickReplyMenu.saveSettings
+
+    console.log(`[${Constants.EXTENSION_NAME}] All event listeners set up.`);
 }
