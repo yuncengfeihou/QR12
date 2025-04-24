@@ -1,6 +1,6 @@
 {
-    "display_name": "QR12.1.5",
-    "loading_order": 13,
+    "display_name": "QR12.2.0",
+    "loading_order": 4,
     "requires": [],
     "optional": [],
     "js": "index.js",
